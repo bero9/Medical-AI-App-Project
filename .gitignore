@@ -1,0 +1,25 @@
+# --- Flutter & Dart ---
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+ios/.generated_files/
+
+# --- Python & Backend ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+.venv/
+
+# --- IDEs & OS Files ---
+.vscode/
+.idea/
+*.swp
+*.DS_Store
+.gradle/
+local.properties
+captures/
