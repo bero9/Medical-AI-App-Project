@@ -10,36 +10,39 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  final PageController _controller = PageController(
-    viewportFraction: 1, // ← يمنع ظهور الصور الجانبية
-  );
+  final PageController _controller = PageController();
+  double _currentPageValue = 0.0;
 
-  int _page = 0;
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      setState(() {
+        _currentPageValue = _controller.page!;
+      });
+    });
+  }
 
   final _pages = <_OnboardPageData>[
     _OnboardPageData(
       title: 'لمحة عن الفريق الطبي',
-      subtitle:
-      'فريق متعدد التخصصات يضم أطباء وتمريضًا وأخصائيي تخاطب وعلاج سمعي وبصري للعمل معًا على رعاية شاملة.',
-      image: "assets/images/team.jpg",
+      subtitle: 'فريق متعدد التخصصات يضم أطباء وتمريضًا وأخصائيي تخاطب وعلاج سمعي وبصري للعمل معًا على رعاية شاملة.',
+      image: "assets/images/team.png",
     ),
     _OnboardPageData(
       title: 'وظائف التطبيق لمرضى الصم',
-      subtitle:
-      'تحويل الكلام المحيط إلى نص على الشاشة، تنبيهات اهتزازية، ودعم الترجمة الفورية للنصوص الهامة.',
-      image: "assets/images/deaf2.jpg",
+      subtitle: 'تحويل الكلام المحيط إلى نص على الشاشة، تنبيهات اهتزازية، ودعم الترجمة الفورية للنصوص الهامة.',
+      image: "assets/images/deaf.png",
     ),
     _OnboardPageData(
       title: 'وظائف التطبيق لمرضى البكم',
-      subtitle:
-      'تحويل النص إلى كلام، عبارات سريعة للتواصل الفوري، ولوحة تواصل بصري تسهّل التعبير.',
-      image: "assets/images/mute.jpg",
+      subtitle: 'تحويل النص إلى كلام، عبارات سريعة للتواصل الفوري، ولوحة تواصل بصري تسهّل التعبير.',
+      image: "assets/images/mute.png",
     ),
     _OnboardPageData(
       title: 'وظائف التطبيق للمكفوفين',
-      subtitle:
-      'كاميرا ناطقة تصف المشهد من حولك، قراءة النصوص المطبوعة، وتوجيه صوتي للمساعدة في التنقل.',
-      image: "assets/images/blind2.jpg",
+      subtitle: 'كاميرا ناطقة تصف المشهد من حولك، قراءة النصوص المطبوعة، وتوجيه صوتي للمساعدة في التنقل.',
+      image: "assets/images/blind.png",
     ),
   ];
 
@@ -53,24 +56,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // تحديد خلفية الـ Scaffold باللون الأسود
+      backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
       body: Stack(
         children: [
-          /// الخلفية السوداء
-          Container(color: Colors.black),
-
-          /// PageView
           Directionality(
             textDirection: TextDirection.ltr,
             child: PageView.builder(
               controller: _controller,
               itemCount: _pages.length,
-              onPageChanged: (i) => setState(() => _page = i),
               itemBuilder: (context, i) {
-                return Padding(
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(25),
+                double scale = (1 - ((_currentPageValue - i).abs() * 0.3)).clamp(0.0, 1.0);
+                double opacity = (1 - ((_currentPageValue - i).abs() * 0.5)).clamp(0.0, 1.0);
+
+                return Transform.scale(
+                  scale: scale,
+                  child: Opacity(
+                    opacity: opacity,
                     child: _OnboardPage(data: _pages[i]),
                   ),
                 );
@@ -80,26 +83,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
           /// زر تخطي
           Positioned(
-            top: 40,
-            right: 40,
+            top: 50,
+            right: 25,
             child: InkWell(
               onTap: _finishOnboarding,
-              child: SafeArea(
-                child: Text(
-                  "Skip",
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.blue.shade900,
-                    fontWeight: FontWeight.bold,
-                  ),
+              child: const Text(
+                "Skip",
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.blue, // جعل اللون أبيض شفاف ليناسب الخلفية السوداء
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
           ),
 
-          /// نقاط الصفحات
+          /// مؤشر الصفحات
           Positioned(
-            bottom: 20,
+            bottom: 30,
             left: 0,
             right: 0,
             child: Center(
@@ -108,12 +109,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: SmoothPageIndicator(
                   controller: _controller,
                   count: _pages.length,
-                  effect: const WormEffect(
-                    dotHeight: 10,
-                    dotWidth: 10,
+                  effect: const ExpandingDotsEffect(
+                    dotHeight: 8,
+                    dotWidth: 8,
+                    expansionFactor: 4,
                     spacing: 8,
-                    dotColor: Colors.white54,
-                    activeDotColor: Colors.white,
+                    dotColor: Colors.white24, // جعل النقاط غير النشطة خافتة
+                    activeDotColor: Colors.white, // النقطة النشطة بيضاء بالكامل
                   ),
                 ),
               ),
@@ -122,6 +124,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 }
 
@@ -139,60 +147,74 @@ class _OnboardPageData {
 
 class _OnboardPage extends StatelessWidget {
   final _OnboardPageData data;
-
   const _OnboardPage({required this.data});
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        /// الصورة الخلفية (ملء الشاشة داخل البطاقات)
-        SizedBox.expand(
-          child: Image.asset(
-            data.image,
-            fit: BoxFit.cover,
+    return Container(
+      color: Colors.black, // ضمان أن تكون خلفية الصفحة نفسها سوداء
+      child: Stack(
+        children: [
+          /// الصورة كخلفية
+          Positioned.fill(
+            child: Image.asset(
+              data.image,
+              fit: BoxFit.cover,
+            ),
           ),
-        ),
 
-        /// صندوق النصوص في الأسفل
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: Container(
-            padding: const EdgeInsets.all(18),
-            margin: const EdgeInsets.only(bottom: 20),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.55),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  data.title,
-                  textAlign: TextAlign.center,
-                  textDirection: TextDirection.rtl,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
+          /// التدرج اللوني لضمان وضوح النص فوق الصورة
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.9), // تدرج يبدأ شفافاً وينتهي بأسود داكن
+                  ],
+                  stops: const [0.4, 1.0],
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  data.subtitle,
-                  textAlign: TextAlign.center,
-                  textDirection: TextDirection.rtl,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    height: 1.5,
-                    color: Colors.white70,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ],
+
+          /// النصوص
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 80),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    data.title,
+                    textAlign: TextAlign.center,
+                    textDirection: TextDirection.rtl,
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  Text(
+                    data.subtitle,
+                    textAlign: TextAlign.center,
+                    textDirection: TextDirection.rtl,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      height: 1.4,
+                      color: Colors.white38, // لون أبيض خافت قليلاً للنص الفرعي
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
