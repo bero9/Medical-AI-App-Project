@@ -1,0 +1,10 @@
+<html>
+<body>
+    <h2>Upload Image</h2>
+    <form action="/api/analyze/" method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="file" name="image" />
+        <button type="submit">Upload</button>
+    </form>
+</body>
+</html>
