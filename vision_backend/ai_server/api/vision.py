@@ -6,51 +6,28 @@ import os
 import torch
 import math
 from PIL import Image, ImageOps
-from transformers import AutoImageProcessor, AutoModelForDepthEstimation
-# =========================================================
-# تحميل نماذج YOLO (مرة واحدة فقط عند تشغيل السيرفر)
-# =========================================================
-# 1. النموذج المخصص (12 فئة داخلية)
-model_custom = YOLO("Yolov8n12.pt")
 
-# 2. النموذج الأساسي القياسي (80 فئة COCO)
-model_base = YOLO("yolov8m.pt") 
-
-#print("Custom Model Classes:", model_custom.names)
-#print("Base Model Classes:", model_base.names)
+# =========================================================
+# تحميل YOLO مرة واحدة فقط
+# =========================================================
+model = YOLO("yolov8n.pt")
 
 # =========================================================
 # تحميل MiDaS مرة واحدة فقط (Depth Estimation)
 # =========================================================
-# =========================================================
-# تحميل Depth Anything V2 (بديل MiDaS الأقوى)
-# =========================================================
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-# نستخدم النسخة Small-hf لضمان سرعة استجابة عالية جداً تناسب الخوادم وتطبيقات التوجيه المباشر
-print("Loading Depth Anything V2 model...")
-depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Small-hf")
-depth_model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Small-hf").to(device)
-depth_model.eval()
+midas_model_type = "DPT_Hybrid"
+midas = torch.hub.load("intel-isl/MiDaS", midas_model_type)
+midas.to(device).eval()
+
+midas_transforms = torch.hub.load("intel-isl/MiDaS", "transforms")
+transform = midas_transforms.dpt_transform
+
 # =========================================================
-# القاموس المحدث للترجمات العربية (يشمل الـ 80 فئة + الفئات المخصصة)
+# ترجمات عربية
 # =========================================================
 ARABIC_LABELS = {
-    # --- الفئات الحصرية والمشتركة للنموذج المخصص (12 فئة) ---
-    'bed': 'سرير',
-    'sofa': 'أريكة',
-    'chair': 'كرسي',
-    'table': 'طاولة',
-    'lamp': 'مصباح',
-    'tv': 'تلفاز',
-    'laptop': 'حاسوب محمول',
-    'wardrobe': 'خزانة ملابس',
-    'window': 'نافذة',
-    'door': 'باب',
-    'potted plant': 'نبتة مزروعة',
-    'photo frame': 'إطار صورة',
-
-    # --- بقية فئات النموذج الأساسي الـ 80 ---
     'person': 'شخص',
     'bicycle': 'دراجة هوائية',
     'car': 'سيارة',
@@ -107,9 +84,14 @@ ARABIC_LABELS = {
     'pizza': 'بيتزا',
     'donut': 'دونات',
     'cake': 'كيك',
+    'chair': 'كرسي',
     'couch': 'كنبة',
+    'potted plant': 'نبتة مزروعة',
+    'bed': 'سرير',
     'dining table': 'طاولة طعام',
     'toilet': 'مرحاض',
+    'tv': 'تلفاز',
+    'laptop': 'حاسوب محمول',
     'mouse': 'فأرة',
     'remote': 'ريموت',
     'keyboard': 'كيبورد',
@@ -128,15 +110,12 @@ ARABIC_LABELS = {
     'toothbrush': 'فرشاة أسنان'
 }
 
-# قائمة بالفئات المشتركة (حسب مسميات النموذج المخصص) التي نريد تجاهلها لأن النموذج الأساسي أدق فيها
-CUSTOM_CLASSES_TO_IGNORE = ['bed', 'sofa', 'chair', 'table', 'tv', 'laptop', 'potted plant']
-
 # =========================================================
 # قراءة صورة الموبايل مع تصحيح EXIF
 # =========================================================
 def read_image_with_exif(path):
     im = Image.open(path)
-    im = ImageOps.exif_transpose(im)  
+    im = ImageOps.exif_transpose(im)  # يصحح دوران الموبايل
     return cv2.cvtColor(np.array(im), cv2.COLOR_RGB2BGR)
 
 # =========================================================
@@ -153,32 +132,22 @@ def get_direction(x_center, img_width):
 # =========================================================
 # MiDaS raw inverse depth (بدون تطبيع)
 # =========================================================
-# =========================================================
-# Depth Anything V2 raw inverse depth 
-# =========================================================
 def compute_depth_map(img_rgb):
-    # النموذج الجديد يتعامل بشكل أفضل مع صور PIL
-    pil_img = Image.fromarray(img_rgb)
-    
-    # تجهيز الصورة للنموذج
-    inputs = depth_processor(images=pil_img, return_tensors="pt").to(device)
-    
+    inp = transform(img_rgb).to(device)
     with torch.no_grad():
-        outputs = depth_model(**inputs)
-        predicted_depth = outputs.predicted_depth
+        pred = midas(inp)
+        pred = torch.nn.functional.interpolate(
+            pred.unsqueeze(1),
+            size=img_rgb.shape[:2],
+            mode="bicubic",
+            align_corners=False
+        ).squeeze()
+    depth_raw = pred.cpu().numpy().astype("float32")
+    return depth_raw  # inverse depth خام
 
-    # إعادة تحجيم خريطة العمق لتتطابق مع أبعاد الصورة الأصلية (تماما كما كنا نفعل)
-    prediction = torch.nn.functional.interpolate(
-        predicted_depth.unsqueeze(1),
-        size=img_rgb.shape[:2],
-        mode="bicubic",
-        align_corners=False,
-    ).squeeze()
-    
-    depth_raw = prediction.cpu().numpy().astype("float32")
-    return depth_raw  # (inverse depth) كلما زادت القيمة، كان الكائن أقرب
 # =========================================================
 # تقدير مسافة الشخص بالمتر (Pinhole Model)
+# Z = f * H / h
 # =========================================================
 def estimate_person_distance_m(bbox, focal_px, person_height_m=1.7):
     x1, y1, x2, y2 = bbox
@@ -188,14 +157,16 @@ def estimate_person_distance_m(bbox, focal_px, person_height_m=1.7):
     return float((focal_px * person_height_m) / h_px)
 
 # =========================================================
-# الدالة الرئيسية المعالجة للصور
+# الدالة الرئيسية
 # =========================================================
 def analyze_image(image_file):
+    # حفظ الصورة مؤقتًا
     temp = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
     for chunk in image_file.chunks():
         temp.write(chunk)
     temp.close()
 
+    # قراءة الصورة (مع EXIF)
     try:
         img = read_image_with_exif(temp.name)
     except Exception:
@@ -211,31 +182,25 @@ def analyze_image(image_file):
     # 1) حساب خريطة العمق الخام
     depth_map = compute_depth_map(img_rgb)
 
-    # 2) تشغيل النماذج بحد ثقة 0.4
-    results_custom = model_custom(img_rgb, conf=0.4)
-    results_base = model_base(img_rgb, conf=0.4)
+    # 2) تشغيل YOLO
+    results = model(img_rgb, conf=0.4)
 
     obstacles = []
 
-    # --- أولاً: معالجة نتائج النموذج المخصص ---
-    # نأخذ منه فقط الفئات الحصرية (مثل الباب، النافذة، الخزانة...) ونتجاهل الأشياء الشائعة
-    for r in results_custom:
+    for r in results:
         for box in r.boxes:
             cls_id = int(box.cls[0])
-            cls_name = model_custom.names[cls_id]
-
-            # الفلترة: إذا كان الكائن ضمن الفئات التي يُجيدها النموذج الأساسي أكثر، نتجاهله هنا
-            if cls_name in CUSTOM_CLASSES_TO_IGNORE:
-                continue
+            cls_name = model.names[cls_id]
 
             if cls_name not in ARABIC_LABELS:
                 continue
 
             label_ar = ARABIC_LABELS[cls_name]
+
             x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
             x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
 
-            x1, y1 = max(0, y1), max(0, y1)
+            x1, y1 = max(0, x1), max(0, y1)
             x2, y2 = min(w - 1, x2), min(h - 1, y2)
             if x2 <= x1 or y2 <= y1:
                 continue
@@ -243,6 +208,7 @@ def analyze_image(image_file):
             x_center = (x1 + x2) / 2
             direction = get_direction(x_center, w)
 
+            # خذ العمق من مركز البوكس (أثبت)
             cx1 = int(x1 + 0.25*(x2-x1)); cx2 = int(x1 + 0.75*(x2-x1))
             cy1 = int(y1 + 0.25*(y2-y1)); cy2 = int(y1 + 0.75*(y2-y1))
             patch = depth_map[cy1:cy2, cx1:cx2]
@@ -252,48 +218,7 @@ def analyze_image(image_file):
                     continue
 
             depth_val = float(np.median(patch))
-            depth_val = max(depth_val, 1e-3)
-
-            obstacles.append({
-                "class_en": cls_name,
-                "class": label_ar,
-                "direction": direction,
-                "depth_val": depth_val,
-                "bbox": [float(x1), float(y1), float(x2), float(y2)]
-            })
-
-    # --- ثانياً: معالجة نتائج النموذج الأساسي ---
-    # هذا النموذج سيأخذ راحته في اكتشاف الكراسي والأسرة والأشخاص والأشياء العامة بدقة عالية
-    for r in results_base:
-        for box in r.boxes:
-            cls_id = int(box.cls[0])
-            cls_name = model_base.names[cls_id]
-
-            if cls_name not in ARABIC_LABELS:
-                continue
-
-            label_ar = ARABIC_LABELS[cls_name]
-            x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
-            x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
-
-            x1, y1 = max(0, y1), max(0, y1)
-            x2, y2 = min(w - 1, x2), min(h - 1, y2)
-            if x2 <= x1 or y2 <= y1:
-                continue
-
-            x_center = (x1 + x2) / 2
-            direction = get_direction(x_center, w)
-
-            cx1 = int(x1 + 0.25*(x2-x1)); cx2 = int(x1 + 0.75*(x2-x1))
-            cy1 = int(y1 + 0.25*(y2-y1)); cy2 = int(y1 + 0.75*(y2-y1))
-            patch = depth_map[cy1:cy2, cx1:cx2]
-            if patch.size == 0:
-                patch = depth_map[y1:y2, x1:x2]
-                if patch.size == 0:
-                    continue
-
-            depth_val = float(np.median(patch))
-            depth_val = max(depth_val, 1e-3)
+            depth_val = max(depth_val, 1e-3)  # حماية
 
             obstacles.append({
                 "class_en": cls_name,
@@ -308,7 +233,9 @@ def analyze_image(image_file):
     if not obstacles:
         return {"tts_text": "لا توجد عوائق أمامك", "obstacles": []}
 
-    # 3) معايرة بالمتر 
+    # =====================================================
+    # 3) معايرة بالمتر (لو في شخص)
+    # =====================================================
     persons = [o for o in obstacles if o["class_en"] == "person"]
     person_ref = None
     if persons:
@@ -318,8 +245,10 @@ def analyze_image(image_file):
     depth_ref = None
 
     if person_ref:
+        # focal من FOV تقريبي للموبايل (≈70°)
         FOV_DEG = 70.0
         focal_px = (w / 2) / math.tan(math.radians(FOV_DEG / 2))
+
         scale_Zref = estimate_person_distance_m(
             person_ref["bbox"],
             focal_px=focal_px,
@@ -327,8 +256,14 @@ def analyze_image(image_file):
         )
         depth_ref = max(person_ref["depth_val"], 1e-3)
 
-    # 4) حساب المسافات
+    # =====================================================
+    # 4) احسب مسافة كل شيء
+    # - إذا في شخص: متر حقيقي تقريبًا
+    # - إذا ما في شخص: متر تقريبي (approx) اعتمادًا على عمق الصورة
+    # =====================================================
+    # fallback scale لو ما في شخص:
     if scale_Zref is None:
+        # نثبت نقطة مرجعية تقريبية: اعتبر median عمق الصورة = 2.0m
         global_med = float(np.median(depth_map))
         global_med = max(global_med, 1e-3)
         scale_Zref = 2.0
@@ -340,12 +275,14 @@ def analyze_image(image_file):
     for o in obstacles:
         d_obj = max(o["depth_val"], 1e-3)
         o["distance_m"] = float(scale_Zref * (depth_ref / d_obj))
-        o["approx"] = approx_mode
+        o["approx"] = approx_mode  # True إذا كانت تقديرية
 
-    # الأقرب أولاً 
+    # الأقرب أولاً (inverse depth أكبر = أقرب)
     obstacles.sort(key=lambda x: x["depth_val"], reverse=True)
 
-    # 5) بناء نص التوجيه الصوتي
+    # =====================================================
+    # 5) بناء نص TTS
+    # =====================================================
     tts_messages = []
     for o in obstacles:
         meters = round(o["distance_m"], 1)
@@ -358,6 +295,7 @@ def analyze_image(image_file):
 
     tts_text = ". ".join(tts_messages)
 
+    # تنظيف
     for o in obstacles:
         o.pop("depth_val", None)
         o.pop("class_en", None)
