@@ -53,23 +53,31 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_native_splash: ^2.3.10
-
+  # 1. إضافة الحزم هنا تحت dev_dependencies
+  flutter_launcher_icons: "^0.13.1"
+  flutter_native_splash: "^2.3.6"
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+flutter_icons:
+     android: true
+     ios: false
+     image_path: "assets/images/APP.jpeg" # تأكد من أن هذا المسار يطابق مكان صورتك
+    # إذا أردت أيقونة متكيفة للأندرويد (Adaptive Icon):
+    # adaptive_icon_background: "#000080" # لون الخلفية الأزرق الداكن
+    # adaptive_icon_foreground: "assets/images/APP.jpeg"
 flutter_native_splash:
-  color: "#000000"
-  image: assets/images/splash.png
+  color: "#0A1333"
+  image: assets/images/APP.jpeg
   android: true
   ios: true
-  fullscreen: true
+
   android_12:
-    color: "#000000"
-    image: assets/images/splash.png
+    image: "assets/images/APP.jpeg"
+    icon_background_color: "#0A1333"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
