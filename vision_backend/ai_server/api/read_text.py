@@ -26,7 +26,7 @@ def extract_text(image_file):
     temp.close()
 
     try:
-        # 3. المعالجة الأساسية (السر في النجاح)
+        # 3. المعالجة الأساسية للصور
         pil_img = Image.open(temp.name)
         # تصحيح الدوران من الهاتف + التأكد من صيغة RGB
         pil_img = ImageOps.exif_transpose(pil_img).convert("RGB")
@@ -51,9 +51,8 @@ def extract_text(image_file):
 
         all_segments = []
 
-        # 5. معالجة البلوكات وقصها
+        # 5. معالجة البلوكات وقصها وتحسينها
         for i, block in enumerate(blocks):
-            # استخدام المفتاح السحري 'coordinate' الذي اكتشفناه في التيرمنال عندك
             bbox = block.get('coordinate', block.get('bbox', None))
             label = block.get('label', 'text')
             
@@ -62,13 +61,28 @@ def extract_text(image_file):
                 crop = img_np[y1:y2, x1:x2]
                 
                 if crop.size > 0:
-                    # حفظ القصاصة للمعاينة إذا كان وضع الديبيج مفعل
-                    if DEBUG_MODE:
-                        crop_filename = os.path.join(DEBUG_DIR, f"block_{i}_{label}.jpg")
-                        cv2.imwrite(crop_filename, cv2.cvtColor(crop, cv2.COLOR_RGB2BGR))
+                    # --- 🪄 سحر معالجة الصور (Pre-processing) ---
+                    
+                    # 1. تكبير الصورة (Upscaling) بضعفين لجعل الحروف الضبابية أكثر وضوحاً للمحرك
+                    crop_resized = cv2.resize(crop, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
 
-                    # قراءة النص من القصاصة
-                    res = ocr_reader.readtext(crop)
+                    # 2. التحويل إلى الأبيض والأسود (Grayscale)
+                    gray_crop = cv2.cvtColor(crop_resized, cv2.COLOR_RGB2GRAY)
+                    
+                    # 3. موازنة الإضاءة المتقدمة (CLAHE) - لمعالجة النصوص المضيئة على خلفية داكنة
+                    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+                    enhanced_crop = clahe.apply(gray_crop)
+                    
+                    # 4. إضافة حواف بيضاء واسعة (Padding) حول النص (مساحة تنفس للمحرك)
+                    padded_crop = cv2.copyMakeBorder(enhanced_crop, 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=[255, 255, 255])
+
+                    # حفظ القصاصة المُعالجة للمعاينة إذا كان وضع الديبيج مفعل
+                    if DEBUG_MODE:
+                        crop_filename = os.path.join(DEBUG_DIR, f"block_{i}_{label}_super_padded.jpg")
+                        cv2.imwrite(crop_filename, padded_crop)
+
+                    # قراءة النص من القصاصة المُحسنة
+                    res = ocr_reader.readtext(padded_crop)
                     txt = " ".join([r[1] for r in res if r[2] > 0.15])
                     
                     if txt.strip():
@@ -90,7 +104,7 @@ def extract_text(image_file):
             combined_text = " . ".join(all_segments)
             tts_output = f"النص المكتشف هو: {combined_text}"
         else:
-            tts_output = "لم أتمكن من قراءة أي نص، حاول تحسين الإضاءة."
+            tts_output = "لم أتمكن من قراءة أي نص، يرجى محاولة تحسين الإضاءة أو الاقتراب أكثر."
 
         return {
             "tts_text": tts_output,

@@ -23,8 +23,8 @@ class _BlindPageState extends State<BlindPage> with WidgetsBindingObserver {
   final FlutterTts _flutterTts = FlutterTts();
 
   // 💡 تأكد من أن هذا الرابط هو الرابط النشط حالياً في ngrok
-  final String apiUrl = "https://84dd-190-2-149-218.ngrok-free.app/api/analyze/";
-  final String ocrUrl = "https://84dd-190-2-149-218.ngrok-free.app/api/read-text/";
+  final String apiUrl = "https://3df6-188-139-149-14.ngrok-free.app/api/analyze/";
+  final String ocrUrl = "https://3df6-188-139-149-14.ngrok-free.app/api/read-text/";
 
   @override
   void initState() {
