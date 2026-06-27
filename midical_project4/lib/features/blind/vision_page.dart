@@ -23,8 +23,8 @@ class _BlindPageState extends State<BlindPage> with WidgetsBindingObserver {
   final FlutterTts _flutterTts = FlutterTts();
 
   // 💡 تأكد من أن هذا الرابط هو الرابط النشط حالياً في ngrok
-  final String apiUrl = "https://3df6-188-139-149-14.ngrok-free.app/api/analyze/";
-  final String ocrUrl = "https://3df6-188-139-149-14.ngrok-free.app/api/read-text/";
+  final String apiUrl = "https://b441-185-132-176-182.ngrok-free.app/api/analyze/";
+  final String ocrUrl = "https://b441-185-132-176-182.ngrok-free.app/api/read-text/";
 
   @override
   void initState() {
@@ -94,29 +94,99 @@ class _BlindPageState extends State<BlindPage> with WidgetsBindingObserver {
 
   // --- دالة قراءة النصوص (نظام Layout + EasyOCR) ---
   Future<void> _captureAndReadText() async {
-    if (_controller == null || !_controller!.value.isInitialized || _isProcessing) return;
+    if (_controller == null ||
+        !_controller!.value.isInitialized ||
+        _isProcessing) return;
 
     setState(() => _isProcessing = true);
+
     await _speak("جاري استخراج النص من الصورة...");
 
     try {
+
       final picture = await _controller!.takePicture();
-      final result = await _sendRequestToServer(File(picture.path), ocrUrl);
+
+      final result = await _sendRequestToServer(
+          File(picture.path),
+          ocrUrl
+      );
+
+
       print("========== OCR RESULT ==========");
       print(result);
       print("================================");
-      if (result != null && result["tts_text"] != null) {
-        // نطق النص الذي استخرجه الخادم بدقة
-        await _speak(result["tts_text"]);
-      } else {
-        await _speak("لم أتمكن من العثور على نص واضح.");
+
+
+      if (result != null) {
+
+
+        String? text;
+
+
+        // إذا كان السيرفر يرجع:
+        // {"text":"...."}
+
+        if (result.containsKey("text")) {
+
+          text = result["text"].toString();
+
+        }
+
+
+        // إذا كان يرجع:
+        // {"tts_text":"...."}
+
+        else if (result.containsKey("tts_text")) {
+
+          text = result["tts_text"];
+
+        }
+
+
+
+        if (text != null && text.trim().isNotEmpty) {
+
+          await _speak(text);
+
+        }
+
+        else {
+
+          await _speak(
+              "وجدت استجابة لكن لم أجد نصاً للقراءة."
+          );
+
+        }
+
+
       }
-    } catch (e) {
-      await _speak("حدث خطأ أثناء محاولة قراءة النص.");
-    } finally {
-      setState(() => _isProcessing = false);
+
+      else {
+
+        await _speak(
+            "لم أتمكن من العثور على نص واضح."
+        );
+
+      }
+
+
+
+    } catch(e){
+
+      print("OCR ERROR: $e");
+
+      await _speak(
+          "حدث خطأ أثناء محاولة قراءة النص."
+      );
+
     }
 
+
+    finally {
+
+      setState(() => _isProcessing = false);
+
+    }
 
   }
 
@@ -130,8 +200,9 @@ class _BlindPageState extends State<BlindPage> with WidgetsBindingObserver {
         contentType: MediaType('image', 'jpeg'),
       ));
 
-      // وضع مهلة 30 ثانية لأن معالجة الذكاء الاصطناعي قد تستغرق وقتاً
-      var streamedResponse = await request.send().timeout(const Duration(seconds: 30));
+      // وضع مهلة 90 ثانية لأن معالجة الذكاء الاصطناعي قد تستغرق وقتاً
+      var streamedResponse =  await request.send()
+          .timeout(const Duration(seconds:900));
       var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
@@ -147,12 +218,22 @@ class _BlindPageState extends State<BlindPage> with WidgetsBindingObserver {
   }
 
   Future<void> _speak(String text) async {
-    await _flutterTts.setLanguage("ar");
-    await _flutterTts.setPitch(1.0);
-    await _flutterTts.setSpeechRate(0.8); // سرعة هادئة لتكون واضحة للكفيف
-    await _flutterTts.speak(text);
-  }
 
+    try {
+
+      await _flutterTts.setLanguage("ar-SA");
+      await _flutterTts.setPitch(1.0);
+      await _flutterTts.setSpeechRate(0.8);
+
+      await _flutterTts.speak(text);
+
+    } catch(e){
+
+      print("TTS ERROR: $e");
+
+    }
+
+  }
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
