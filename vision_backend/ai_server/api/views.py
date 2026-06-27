@@ -28,14 +28,28 @@ class ReadTextView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
+
         serializer = ImageUploadSerializer(data=request.data)
+
         if serializer.is_valid():
+
             image = serializer.validated_data["image"]
-            
-            # تمرير الصورة إلى محرك EasyOCR
+
             result = extract_text(image)
-            return Response(result, status=status.HTTP_200_OK)
-        
-        # 👇 أضف سطر الطباعة هنا لكي نعرف سبب الرفض إذا تكرر الخطأ
+
+
+            return Response(
+                {
+                    "text": result,
+                    "tts_text": result
+                },
+                status=status.HTTP_200_OK
+            )
+
+
         print("❌ Serializer Error:", serializer.errors)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
